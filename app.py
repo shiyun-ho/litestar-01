@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Any
 
 from litestar import Litestar, get, post, put
 from litestar.exceptions import NotFoundException
@@ -37,16 +36,18 @@ async def add_item(data: TodoItem) -> list[TodoItem]:
     TODO_LIST.append(data)
     return TODO_LIST
 
+
 @get("/{name:str}")
-async def greeter(name: str)-> str:
+async def greeter(name: str) -> str:
     return "Hello, " + name
 
+
 @put("/{item_title:str}")
-async def update_item(item_title:str, data: TodoItem) -> list[TodoItem]:
+async def update_item(item_title: str, data: TodoItem) -> list[TodoItem]:
     todo_item = get_todo_by_title(item_title)
     todo_item.title = data.title
     todo_item.done = data.done
     return TODO_LIST
 
-app = Litestar([update_item])
 
+app = Litestar([get_list, add_item, update_item])
