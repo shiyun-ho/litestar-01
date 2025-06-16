@@ -13,6 +13,8 @@ from litestar.datastructures import State
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.status_codes import HTTP_409_CONFLICT
 
+# Type aliases
+# Represents data at boundaries of handlers
 TodoType = dict[str, Any]
 TodoCollectionType = list[TodoType]
 
@@ -65,6 +67,8 @@ async def db_connection(app: Litestar) -> AsyncGenerator[None, None]:
     
 sessionmaker = async_sessionmaker(expire_on_commit=False)
 
+# Since litestar cannot automatically handle (de)serialisation of data
+# This fn helps us to convert data from TodoItem that is serialisable by Litestar
 def serialize_todo(todo: TodoItem) -> TodoType:
     return {"title": todo.title, "done": todo.done}
 
@@ -85,6 +89,7 @@ async def get_todo_list(done: bool | None, session: AsyncSession) -> Sequence[To
     return result.scalars().all()
 
 @get("/")
+# state (keyword arg) to access engine in handlers
 async def get_list(state: State, done: bool | None = None) -> TodoCollectionType:
     async with sessionmaker(bind=state.engine) as session:
         return [serialize_todo(todo) for todo in await get_todo_list(done, session)]
