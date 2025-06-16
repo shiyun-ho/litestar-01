@@ -30,21 +30,37 @@ class TodoItem(Base):
 @asynccontextmanager
 async def db_connection(app: Litestar) -> AsyncGenerator[None, None]:
     """
-    db_connection: Context Manager
-        - Creates new engine & Disposes when done
-        - Added to lifespan argument to persist through lifespan 
+    A context manager for managing db connection lifecycle.
+    - Creates a new async engine if doesn't exist
+    - Ensures tables are created (based on ORM model)
+    - Disposes of engine cleanly when app shuts down
+
+    This fn is added to app's lifespan events so it runs once and block
+    shutdown until cleanup is complete
     """
+    # Check if engine already exists in app state
     engine = getattr(app.state, "engine", None)
+
     if engine is None:
+        # Create new async SQLite engine if not set
         engine = create_async_engine("sqlite+aiosqlite:///todo.sqlite")
+        # Store for later use
         app.state.engine = engine
     
     async with engine.begin() as conn:
+        # Base.metadata.create_all: Synchronous ORM method
+        # Can't be called directly since we are in async context
+        # SO -> Wrapped with conn.run_sync():
+        #   - Runs the sync func in background thread in thread pool
+        #   - prevents blocking in main event loop
+        #   - Lets us use SQLAlchemy ORM features safely in async
         await conn.run_sync(Base.metadata.create_all)
 
     try:
+        # Control yield back to app
         yield
     finally: 
+        # Clean up - Dispose async engine properly
         await engine.dispose()
     
 sessionmaker = async_sessionmaker(expire_on_commit=False)
