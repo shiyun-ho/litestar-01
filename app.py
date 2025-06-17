@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 from collections.abc import AsyncGenerator, Sequence
 
 from sqlalchemy import select
@@ -74,8 +74,6 @@ sessionmaker = async_sessionmaker(expire_on_commit=False)
 #   Begins transaction
 #   Handles any integrity errors from transaction
 # ============
-
-
 async def provide_transaction(state: State) -> AsyncGenerator[AsyncSession, None]:
     async with sessionmaker(bond=state.engine) as session:
         try:
@@ -112,38 +110,64 @@ async def get_todo_list(done: bool | None, session: AsyncSession) -> Sequence[To
     return result.scalars().all()
 
 
-@get("/")
+# @get("/")
 # state (keyword arg) to access engine in handlers
-async def get_list(state: State, done: bool | None = None) -> TodoCollectionType:
-    async with sessionmaker(bind=state.engine) as session:
-        return [serialize_todo(todo) for todo in await get_todo_list(done, session)]
+# async def get_list(state: State, done: bool | None = None) -> TodoCollectionType:
+#     async with sessionmaker(bind=state.engine) as session:
+#         return [serialize_todo(todo) for todo in await get_todo_list(done, session)]
 
+# ====================
+# fn arg: transaction
+# injects db session
+# ====================
+@get("/")
+async def get_list(transaction: AsyncSession, done:Optional[bool] = None) -> TodoCollectionType:
+    return [serialize_todo(todo) for todo in await get_todo_list(done, transaction)]
+    
 
+# @post("/")
+# async def add_item(data: TodoType, state: State) -> TodoType:
+#     new_todo = TodoItem(title=data["title"], done=data["done"])
+#     async with sessionmaker(bind=state.engine) as session:
+#         try:
+#             async with session.begin():
+#                 session.add(new_todo)
+#         except IntegrityError as e:
+#             raise ClientException(
+#                 status_code=HTTP_409_CONFLICT,
+#                 detail=f"TODO {new_todo.title!r} already exists",
+#             ) from e
+
+#         return serialize_todo(new_todo)
+
+# ==========================
+# dependency injection ver
+# ==========================
 @post("/")
-async def add_item(data: TodoType, state: State) -> TodoType:
+async def add_item(data: TodoType, transaction: AsyncSession) -> TodoType:
     new_todo = TodoItem(title=data["title"], done=data["done"])
-    async with sessionmaker(bind=state.engine) as session:
-        try:
-            async with session.begin():
-                session.add(new_todo)
-        except IntegrityError as e:
-            raise ClientException(
-                status_code=HTTP_409_CONFLICT,
-                detail=f"TODO {new_todo.title!r} already exists",
-            ) from e
+    transaction.add(new_todo)
+    return serialize_todo(new_todo)
 
-        return serialize_todo(new_todo)
+# @put("/{item_title:str}")
+# async def update_item(item_title: str, data: TodoType, state: State) -> TodoType:
+#     async with sessionmaker(bind=state.engine) as session, session.begin():
+#         todo_item = await get_todo_by_title(item_title, session)
+#         todo_item.title = data["title"]
+#         todo_item.done = data["done"]
+
+#     return serialize_todo(todo_item)
 
 
+# ==========================
+# dependency injection ver
+# ==========================
 @put("/{item_title:str}")
-async def update_item(item_title: str, data: TodoType, state: State) -> TodoType:
-    async with sessionmaker(bind=state.engine) as session, session.begin():
-        todo_item = await get_todo_by_title(item_title, session)
-        todo_item.title = data["title"]
-        todo_item.done = data["done"]
-
+async def update_item(item_title: str, data: TodoType, transaction:AsyncSession) -> TodoType:
+    todo_item = await get_todo_by_title(item_title, transaction)
+    todo_item.title = data["title"]
+    todo_item.done = data["done"]
     return serialize_todo(todo_item)
-
 
 """
     lifespan: Hook
